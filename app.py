@@ -389,9 +389,40 @@ with gr.Blocks() as demo:
     )
 
 
+def resolve_server_port():
+    env_port = os.getenv("GRADIO_SERVER_PORT")
+    if env_port:
+        try:
+            port_value = int(env_port)
+            print(f"[DEBUG] GRADIO_SERVER_PORT set, using port {port_value}")
+            return port_value
+        except ValueError:
+            print(
+                f"[DEBUG] Invalid GRADIO_SERVER_PORT='{env_port}', falling back to automatic selection"
+            )
+            return None
+
+    print("[DEBUG] GRADIO_SERVER_PORT not set, defaulting to port 4343 (with fallback)")
+    return 4343
+
+
 if __name__ == "__main__":
-    demo.launch(
-        server_name="0.0.0.0",  # ascolta su tutte le interfacce
-        server_port=4343,        # o la porta che preferisci
-        share=True,              # per ottenere un link pubblico
-    )
+    preferred_port = resolve_server_port()
+    try:
+        demo.launch(
+            server_name="0.0.0.0",  # ascolta su tutte le interfacce
+            server_port=preferred_port,  # usa la porta preferita o None per scelta automatica
+            share=True,  # per ottenere un link pubblico
+        )
+    except OSError as error:
+        if preferred_port is not None:
+            print(
+                f"[DEBUG] Port {preferred_port} unavailable ({error}); retrying with automatic port selection"
+            )
+            demo.launch(
+                server_name="0.0.0.0",
+                server_port=None,  # lascia scegliere a Gradio una porta libera
+                share=True,
+            )
+        else:
+            raise
