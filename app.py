@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
 
     "segmentation": {
         "enabled": True,
+        # Usa di default lo script originale basato su "people_segmentation" (richiede il pacchetto dedicato)
         "script": "people_segmentation.py",
         "function": "segment",
         "expects_path": None,

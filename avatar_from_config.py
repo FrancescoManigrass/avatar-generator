@@ -359,8 +359,14 @@ def segment_image_to_mask(
             logging.info(f"Segmentazione via plugin OK: {script}::{func_name}")
             print("[DEBUG] segment_image_to_mask: segmentazione plugin riuscita")
         except Exception as e:
-            logging.warning(f"Plugin segmentazione fallito ({e!r}).")
-            print(f"[DEBUG] segment_image_to_mask: plugin fallito con errore {e!r}")
+            missing_pkg_hint = ""
+            if isinstance(e, ModuleNotFoundError) and "people_segmentation.pre_trained_models" in str(e):
+                missing_pkg_hint = " Assicurati di avere il pacchetto 'people-segmentation' installato."
+
+            logging.warning(f"Plugin segmentazione fallito ({e!r}).{missing_pkg_hint}")
+            print(
+                f"[DEBUG] segment_image_to_mask: plugin fallito con errore {e!r}.{missing_pkg_hint}"
+            )
 
             if not seg_cfg.get("allow_grabcut_fallback", True):
                 # se non è permesso usare GrabCut, rilancia l'errore
