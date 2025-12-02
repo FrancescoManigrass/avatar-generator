@@ -84,6 +84,19 @@ def build_cfg(
     calvis_dataset: str,
     segmentation_enabled: bool,
 ):
+    print("[DEBUG] build_cfg chiamata", {
+        "front_path": front_path,
+        "side_path": side_path,
+        "gender": gender,
+        "height": height,
+        "weight": weight,
+        "feature_model": feature_model,
+        "measurement_model": measurement_model,
+        "parameters": parameters,
+        "experiment_name": experiment_name,
+        "calvis_dataset": calvis_dataset,
+        "segmentation_enabled": segmentation_enabled,
+    })
     cfg = DEFAULT_CONFIG.copy()
 
     # normalizza dataset
@@ -91,6 +104,7 @@ def build_cfg(
 
     # se CALVIS + SMPL → override con humanet-master
     if measurement_model == "calvis" and calvis_dataset == "smpl":
+        print("[DEBUG] build_cfg: applico preset CALVIS_SMPL_PRESET per dataset smpl")
         cfg.update(CALVIS_SMPL_PRESET)
     else:
         cfg["calvis_dataset"] = calvis_dataset
@@ -118,6 +132,8 @@ def build_cfg(
     # ✅ collega il checkbox alla config
     cfg["segmentation"]["enabled"] = bool(segmentation_enabled)
 
+    print("[DEBUG] build_cfg: configurazione finale normalizzata", cfg)
+
     return cfg
 
 
@@ -134,6 +150,7 @@ def generate_avatar(
     calvis_dataset,
     segmentation_enabled,
 ):
+    print("[DEBUG] generate_avatar avviata")
     if front_file is None or side_file is None:
         # >>> ora ritorniamo 5 valori (mesh, model3d, log, seg_front, seg_side)
         return None, None, "❗ Carica sia la foto frontale che quella di profilo.", None, None
@@ -148,6 +165,27 @@ def generate_avatar(
     if measurement_model == "calvis" and calvis_dataset == "smpl":
         forced_parameters = 10
         note = " (forzato a 10 per dataset SMPL)"
+        print(
+            "[DEBUG] generate_avatar: measurement_model=calvis e dataset=smpl, forzo parameters a 10"
+        )
+
+    print(
+        "[DEBUG] generate_avatar: preparo configurazione",
+        {
+            "front_path": front_path,
+            "side_path": side_path,
+            "gender": gender,
+            "height": height,
+            "weight": weight,
+            "feature_model": feature_model,
+            "measurement_model": measurement_model,
+            "requested_parameters": parameters,
+            "forced_parameters": forced_parameters,
+            "experiment_name": experiment_name,
+            "calvis_dataset": calvis_dataset,
+            "segmentation_enabled": segmentation_enabled,
+        },
+    )
 
     try:
         cfg = build_cfg(
@@ -165,6 +203,8 @@ def generate_avatar(
         )
 
         setup_logging(cfg["log_level"])
+
+        print("[DEBUG] generate_avatar: config pronta, lancio run_for_parameters")
 
         mesh_path = run_for_parameters(cfg, forced_parameters)
         mesh_path = Path(mesh_path)
@@ -184,6 +224,16 @@ def generate_avatar(
             if side_mask.is_file():
                 seg_side_path = str(side_mask)
 
+        print(
+            "[DEBUG] generate_avatar: generazione completata",
+            {
+                "mesh_path": str(mesh_path),
+                "seg_front_path": seg_front_path,
+                "seg_side_path": seg_side_path,
+                "message_note": note,
+            },
+        )
+
         msg = (
             f"✅ Avatar generato con successo.\n"
             f"- measurement_model = {measurement_model}\n"
@@ -197,6 +247,7 @@ def generate_avatar(
         return str(mesh_path), str(mesh_path), msg, seg_front_path, seg_side_path
 
     except Exception as e:
+        print("[DEBUG] generate_avatar: eccezione rilevata", repr(e))
         # >>> anche in errore ritorniamo 5 valori
         return None, None, f"❌ Errore durante la generazione: {repr(e)}", None, None
 
@@ -338,9 +389,40 @@ with gr.Blocks() as demo:
     )
 
 
+def resolve_server_port():
+    env_port = os.getenv("GRADIO_SERVER_PORT")
+    if env_port:
+        try:
+            port_value = int(env_port)
+            print(f"[DEBUG] GRADIO_SERVER_PORT set, using port {port_value}")
+            return port_value
+        except ValueError:
+            print(
+                f"[DEBUG] Invalid GRADIO_SERVER_PORT='{env_port}', falling back to automatic selection"
+            )
+            return None
+
+    print("[DEBUG] GRADIO_SERVER_PORT not set, defaulting to port 4343 (with fallback)")
+    return 4343
+
+
 if __name__ == "__main__":
-    demo.launch(
-        server_name="0.0.0.0",  # ascolta su tutte le interfacce
-        server_port=4343,        # o la porta che preferisci
-        share=True,              # per ottenere un link pubblico
-    )
+    preferred_port = resolve_server_port()
+    try:
+        demo.launch(
+            server_name="0.0.0.0",  # ascolta su tutte le interfacce
+            server_port=preferred_port,  # usa la porta preferita o None per scelta automatica
+            share=True,  # per ottenere un link pubblico
+        )
+    except OSError as error:
+        if preferred_port is not None:
+            print(
+                f"[DEBUG] Port {preferred_port} unavailable ({error}); retrying with automatic port selection"
+            )
+            demo.launch(
+                server_name="0.0.0.0",
+                server_port=None,  # lascia scegliere a Gradio una porta libera
+                share=True,
+            )
+        else:
+            raise
