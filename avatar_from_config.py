@@ -17,6 +17,10 @@ from joblib import load
 from measurement_evaluator import Human
 
 
+# Cache per evitare di riprovare il plugin quando le dipendenze non sono disponibili
+_PLUGIN_AVAILABILITY: Dict[str, bool] = {}
+
+
 
 # ----------------------------- Utils base -----------------------------
 
@@ -350,27 +354,39 @@ def segment_image_to_mask(
 
     # ----------------- 1) Tentativo con plugin -----------------
     if seg_cfg.get("enabled", False):
-        try:
-            script = expand_path(seg_cfg.get("script", "people_segmentation.py"))
-            func_name = seg_cfg.get("function", "segment")
-            expects_path = seg_cfg.get("expects_path")
-            fn = dynamic_import_func(script, func_name)
-            mask_u8 = run_plugin_segmenter(image_path, fn, expects_path=expects_path)
-            logging.info(f"Segmentazione via plugin OK: {script}::{func_name}")
-            print("[DEBUG] segment_image_to_mask: segmentazione plugin riuscita")
-        except Exception as e:
-            missing_pkg_hint = ""
-            if isinstance(e, ModuleNotFoundError) and "people_segmentation.pre_trained_models" in str(e):
-                missing_pkg_hint = " Assicurati di avere il pacchetto 'people-segmentation' installato."
+        script = expand_path(seg_cfg.get("script", "people_segmentation.py"))
+        func_name = seg_cfg.get("function", "segment")
+        cache_key = f"{script}::{func_name}"
 
-            logging.warning(f"Plugin segmentazione fallito ({e!r}).{missing_pkg_hint}")
-            print(
-                f"[DEBUG] segment_image_to_mask: plugin fallito con errore {e!r}.{missing_pkg_hint}"
+        if _PLUGIN_AVAILABILITY.get(cache_key) is False:
+            logging.info(
+                "Plugin di segmentazione precedentemente marcato come non disponibile; uso direttamente GrabCut"
             )
+            print(
+                "[DEBUG] segment_image_to_mask: plugin già segnato come non disponibile, salto direttamente al fallback"
+            )
+        else:
+            try:
+                expects_path = seg_cfg.get("expects_path")
+                fn = dynamic_import_func(script, func_name)
+                mask_u8 = run_plugin_segmenter(image_path, fn, expects_path=expects_path)
+                logging.info(f"Segmentazione via plugin OK: {script}::{func_name}")
+                print("[DEBUG] segment_image_to_mask: segmentazione plugin riuscita")
+                _PLUGIN_AVAILABILITY[cache_key] = True
+            except Exception as e:
+                missing_pkg_hint = ""
+                if isinstance(e, ModuleNotFoundError) and "people_segmentation.pre_trained_models" in str(e):
+                    missing_pkg_hint = " Assicurati di avere il pacchetto 'people-segmentation' installato."
+                    _PLUGIN_AVAILABILITY[cache_key] = False
 
-            if not seg_cfg.get("allow_grabcut_fallback", True):
-                # se non è permesso usare GrabCut, rilancia l'errore
-                raise
+                logging.warning(f"Plugin segmentazione fallito ({e!r}).{missing_pkg_hint}")
+                print(
+                    f"[DEBUG] segment_image_to_mask: plugin fallito con errore {e!r}.{missing_pkg_hint}"
+                )
+
+                if not seg_cfg.get("allow_grabcut_fallback", True):
+                    # se non è permesso usare GrabCut, rilancia l'errore
+                    raise
 
     # ----------------- 2) Fallback con GrabCut -----------------
     if mask_u8 is None:
