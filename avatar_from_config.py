@@ -22,6 +22,7 @@ from measurement_evaluator import Human
 
 
 def setup_logging(level: str = "INFO"):
+    print(f"[DEBUG] setup_logging: configuro logging con livello {level}")
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s | %(levelname)s | %(message)s",
@@ -29,11 +30,13 @@ def setup_logging(level: str = "INFO"):
 
 
 def ensure_dir(p: Path) -> Path:
+    print(f"[DEBUG] ensure_dir: controllo/creo directory {p}")
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def expand_path(p: Union[str, Path]) -> Path:
+    print(f"[DEBUG] expand_path: espando path {p}")
     return Path(os.path.expandvars(str(p))).expanduser()
 
 
@@ -124,6 +127,7 @@ def load_model_with_human(path: Path):
     Carica un modello joblib assicurandosi che 'Human' sia visibile come __main__.Human,
     per compatibilità con i pickle salvati in vecchi script.
     """
+    print(f"[DEBUG] load_model_with_human: carico modello da {path}")
     main_mod = sys.modules.get("__main__")
     if main_mod is not None and not hasattr(main_mod, "Human"):
         # Espone la classe Human anche come __main__.Human
@@ -136,6 +140,7 @@ def load_deep2dencoder(calvis_dataset: str):
     import importlib.util
 
     calvis_dataset = str(calvis_dataset).strip().lower()
+    print(f"[DEBUG] load_deep2dencoder: dataset calvis = {calvis_dataset}")
 
     # 🔹 nel caso SMPL
     if calvis_dataset == "smpl":
@@ -178,6 +183,9 @@ def segment_image_to_mask_old(
     debug_out_dir: Optional[Path],
     debug_prefix: str,
 ) -> np.ndarray:
+    print(
+        f"[DEBUG] segment_image_to_mask_old: immagine {image_path}, target_size={target_size}, debug_prefix={debug_prefix}, cfg={seg_cfg}"
+    )
     mask_u8 = None
     if seg_cfg.get("enabled", False):
         try:
@@ -335,6 +343,9 @@ def segment_image_to_mask(
     - post-processing morfologico dopo il resize
     - salva sia mask che overlay in debug_out_dir (se presente)
     """
+    print(
+        f"[DEBUG] segment_image_to_mask: image_path={image_path}, target_size={target_size}, debug_prefix={debug_prefix}, seg_cfg={seg_cfg}"
+    )
     mask_u8: Optional[np.ndarray] = None
 
     # ----------------- 1) Tentativo con plugin -----------------
@@ -346,8 +357,16 @@ def segment_image_to_mask(
             fn = dynamic_import_func(script, func_name)
             mask_u8 = run_plugin_segmenter(image_path, fn, expects_path=expects_path)
             logging.info(f"Segmentazione via plugin OK: {script}::{func_name}")
+            print("[DEBUG] segment_image_to_mask: segmentazione plugin riuscita")
         except Exception as e:
-            logging.warning(f"Plugin segmentazione fallito ({e!r}).")
+            missing_pkg_hint = ""
+            if isinstance(e, ModuleNotFoundError) and "people_segmentation.pre_trained_models" in str(e):
+                missing_pkg_hint = " Assicurati di avere il pacchetto 'people-segmentation' installato."
+
+            logging.warning(f"Plugin segmentazione fallito ({e!r}).{missing_pkg_hint}")
+            print(
+                f"[DEBUG] segment_image_to_mask: plugin fallito con errore {e!r}.{missing_pkg_hint}"
+            )
 
             if not seg_cfg.get("allow_grabcut_fallback", True):
                 # se non è permesso usare GrabCut, rilancia l'errore
@@ -356,6 +375,7 @@ def segment_image_to_mask(
     # ----------------- 2) Fallback con GrabCut -----------------
     if mask_u8 is None:
         logging.info("Uso GrabCut di fallback per la segmentazione...")
+        print("[DEBUG] segment_image_to_mask: uso GrabCut di fallback")
         mask_u8 = run_grabcut(image_path)
 
     # ----------------- 3) Resize e pulizia morfologica -----------------
@@ -372,6 +392,7 @@ def segment_image_to_mask(
         mask_u8 = cv2.morphologyEx(mask_u8, cv2.MORPH_OPEN, kernel, iterations=1)
     except Exception as e:
         logging.debug(f"Morfologia su mask ridimensionata non riuscita ({debug_prefix}): {e!r}")
+        print(f"[DEBUG] segment_image_to_mask: morfologia fallita con errore {e!r}")
 
     # Converti in [0,1] float32 (binaria)
     mask = to_float01(mask_u8)
@@ -384,8 +405,10 @@ def segment_image_to_mask(
         try:
             mask_path = debug_out_dir / f"{debug_prefix}_mask.png"
             Image.fromarray((mask * 255).astype(np.uint8)).save(mask_path)
+            print(f"[DEBUG] segment_image_to_mask: mask salvata in {mask_path}")
         except Exception as e:
             logging.debug(f"Salvataggio mask debug non riuscito ({debug_prefix}): {e!r}")
+            print(f"[DEBUG] segment_image_to_mask: errore nel salvataggio mask {e!r}")
 
         # 4.2) Prova a salvare anche l'overlay (solo per ispezione visiva)
         try:
@@ -399,8 +422,10 @@ def segment_image_to_mask(
                 overlay = cv2.addWeighted(bgr, 0.7, color_mask, 0.3, 0.0)
                 overlay_path = debug_out_dir / f"{debug_prefix}_overlay.png"
                 cv2.imwrite(str(overlay_path), overlay)
+                print(f"[DEBUG] segment_image_to_mask: overlay salvata in {overlay_path}")
         except Exception as e:
             logging.debug(f"Salvataggio overlay debug non riuscito ({debug_prefix}): {e!r}")
+            print(f"[DEBUG] segment_image_to_mask: errore nel salvataggio overlay {e!r}")
 
     return mask
 
@@ -416,6 +441,10 @@ def extract_features_ae(
     ckpt_path: Path,
     calvis_dataset: str,
 ) -> np.ndarray:
+    print(
+        "[DEBUG] extract_features_ae: estraggo feature AE",
+        {"ckpt_path": ckpt_path, "calvis_dataset": calvis_dataset, "front_shape": getattr(front, "shape", None), "side_shape": getattr(side, "shape", None)},
+    )
     device = torch.device("cpu")
 
     # Prende la classe giusta in base a smpl / calvis
@@ -436,6 +465,10 @@ def extract_features_ae(
     return np.concatenate([f_feat, s_feat], axis=-1).reshape(1, -1)
 
 def extract_features_pca(front: np.ndarray, side: np.ndarray, pca_dir: Path, gender: str) -> np.ndarray:
+    print(
+        "[DEBUG] extract_features_pca: estraggo feature PCA",
+        {"pca_dir": pca_dir, "gender": gender, "front_shape": getattr(front, "shape", None), "side_shape": getattr(side, "shape", None)},
+    )
     pca_front_path = pca_dir / f"pca_{gender}_front.joblib"
     pca_side_path = pca_dir / f"pca_{gender}_side.joblib"
     if not pca_front_path.is_file() or not pca_side_path.is_file():
@@ -450,6 +483,10 @@ def extract_features_pca(front: np.ndarray, side: np.ndarray, pca_dir: Path, gen
 def append_body_metrics(
     features: np.ndarray, height: float, weight: Optional[float], measurement_model: str
 ) -> np.ndarray:
+    print(
+        "[DEBUG] append_body_metrics: aggiungo metriche corporee",
+        {"features_shape": getattr(features, "shape", None), "height": height, "weight": weight, "measurement_model": measurement_model},
+    )
     h = np.array(height, dtype="float32").reshape(1, 1)
     if measurement_model == "nomo":
         return np.concatenate([features, h], axis=-1)
@@ -551,6 +588,7 @@ def load_config_file(cfg_path: Path) -> Dict[str, Any]:
 
 
 def normalize_and_validate(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    print("[DEBUG] normalize_and_validate: config in ingresso", cfg)
     missing = [k for k in REQUIRED_KEYS if k not in cfg]
     if missing:
         raise ValueError(f"Chiavi mancanti nel config: {missing}")
@@ -588,6 +626,8 @@ def normalize_and_validate(cfg: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("parameters_list deve essere una lista di interi (es. [10,16,32,...]).")
     cfg["parameters_list"] = [int(p) for p in params_list]
 
+    print("[DEBUG] normalize_and_validate: config normalizzata", cfg)
+
     return cfg
 
 
@@ -598,6 +638,10 @@ def run_for_parameters(cfg: Dict[str, Any], parameters_value: int, target_size: 
     """
     Esegue l'intera pipeline per uno specifico 'parameters'.
     """
+    print(
+        f"[DEBUG] run_for_parameters: start con parameters_value={parameters_value}, target_size={target_size}"
+    )
+    print("[DEBUG] run_for_parameters: config ricevuta", cfg)
     calvis_dataset = cfg.get("calvis_dataset", "supr")
     # Output: .../experiment/p{parameters}/
     exp_base = ensure_dir(Path(cfg["output_dir"]) / cfg["experiment"])
@@ -608,6 +652,9 @@ def run_for_parameters(cfg: Dict[str, Any], parameters_value: int, target_size: 
 
     # --- Segmentazione / Preproc ---
     logging.info(f"[p{parameters_value}] Segmento e preprocesso le immagini...")
+    print(
+        f"[DEBUG] run_for_parameters: segmentazione front={cfg['front_img']} side={cfg['side_img']} enabled={cfg['segmentation']['enabled']}"
+    )
     front_mask = (
         segment_image_to_mask(
             image_path=Path(cfg["front_img"]),
@@ -643,6 +690,16 @@ def run_for_parameters(cfg: Dict[str, Any], parameters_value: int, target_size: 
         else normalize_silhouette_like(pil_to_resized_gray(Path(cfg["side_img"]), target_size))
     )
 
+    print(
+        "[DEBUG] run_for_parameters: silhouette preparate",
+        {
+            "front_mask_present": front_mask is not None,
+            "side_mask_present": side_mask is not None,
+            "front_shape": getattr(front, "shape", None),
+            "side_shape": getattr(side, "shape", None),
+        },
+    )
+
     # --- Path per questo 'parameters' ---
     ae_ckpt_name = cfg["ae_ckpt_name"].format(gender=cfg["gender"])
     paths = resolve_paths(
@@ -654,6 +711,7 @@ def run_for_parameters(cfg: Dict[str, Any], parameters_value: int, target_size: 
         ae_ckpt_name=ae_ckpt_name,
         calvis_dataset=calvis_dataset,
     )
+    print(f"[DEBUG] run_for_parameters: percorsi risolti {paths}")
 
     # --- Estrazione feature ---
     logging.info(f"[p{parameters_value}] Estrazione feature...")
@@ -672,6 +730,10 @@ def run_for_parameters(cfg: Dict[str, Any], parameters_value: int, target_size: 
         raise ValueError("feature_model non valido (usa 'ae' o 'pca').")
 
     features = append_body_metrics(features, cfg["height"], cfg["weight"], cfg["measurement_model"])
+    print(
+        "[DEBUG] run_for_parameters: feature finali pronte",
+        {"shape": getattr(features, "shape", None), "measurement_model": cfg["measurement_model"]},
+    )
 
     # --- Modello/fit/predizione ---
     logging.info(f"[p{parameters_value}] Costruisco/fitto il modello 'Human'...")
@@ -709,6 +771,7 @@ def run_for_parameters(cfg: Dict[str, Any], parameters_value: int, target_size: 
                 faces=faces,
             )
             human.fit_shape(X_train, y_shape_train)
+        print("[DEBUG] run_for_parameters: modello Human pronto", human)
     else:
         raise ValueError("measurement_model non valido (usa 'calvis' o 'nomo').")
 
@@ -718,6 +781,7 @@ def run_for_parameters(cfg: Dict[str, Any], parameters_value: int, target_size: 
     mesh = human.display_3D(shape)
     mesh_path = exp_out_dir / cfg["mesh_name"]
     mesh.export(mesh_path.as_posix())
+    print("[DEBUG] run_for_parameters: mesh esportata", mesh_path)
     logging.info(f"[p{parameters_value}] 3D model salvato in: {mesh_path}")
     return mesh_path
 
