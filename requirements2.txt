@@ -1,0 +1,24 @@
+# =========================
+# Avatar Generator - Requirements
+# =========================
+# Note: Comments are allowed in requirements.txt. Remove or edit pins as needed.
+# If you need GPU acceleration for PyTorch, install the appropriate wheel from
+# https://pytorch.org/get-started/locally/ matching your CUDA version.
+
+# --- Core ---
+numpy>=1.23
+Pillow>=9.5
+joblib>=1.2
+scikit-learn>=1.2
+torch>=2.0        # CPU build by default via pip; see note above for CUDA builds
+trimesh>=4.0
+
+# --- Optional / segmentation & config ---
+opencv-python>=4.8   # used for GrabCut fallback and debug overlays
+PyYAML>=6.0          # only needed if you want to use YAML config files
+
+# --- (Optional) extras you might need ---
+matplotlib>=3.7     # if you plan to visualize/debug
+torchvision>=0.15   # if your people_segmentation.py uses torchvision models
+onnxruntime>=1.16   # if your people_segmentation.py loads ONNX models
+pandas

@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "trainer_full.py", line 853, in <module>
+    model.train_model(dataloader, test_dataloader, epochs=args.epochs, args=args, learning_rate=args.lr, folder=folder)
+  File "trainer_full.py", line 250, in train_model
+    X_train = np.load(f"{args.path_folder}/features3/{args.gender}/ae_train_features.npy")
+  File "/home/fmanigrasso/PROTOLTNendtoend/env2/lib/python3.7/site-packages/numpy/lib/npyio.py", line 417, in load
+    fid = stack.enter_context(open(os_fspath(file), "rb"))
+FileNotFoundError: [Errno 2] No such file or directory: 'Dataset/data10/train_test_data_fold1001/features3/female/ae_train_features.npy'
